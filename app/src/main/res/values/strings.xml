@@ -983,5 +983,8 @@
   <string name="setting_display_page_chat_font_family_default">Default</string>
   <string name="setting_display_page_chat_font_family_serif">Serif</string>
   <string name="setting_display_page_chat_font_family_monospace">Monospace</string>
+  <string name="placeholder_step_count">step_count</string>
+  <string name="placeholder_screen_time">screen_time</string>
+  <string name="placeholder_battery_status">battery_status</string>
 </resources>
 
