@@ -120,5 +120,8 @@
         tools:node="remove" />
     </provider>
   </application>
-
+    <!-- 步数权限 -->
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+    <!-- 屏幕使用时长权限 -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
 </manifest>
