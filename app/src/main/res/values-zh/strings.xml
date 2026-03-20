@@ -342,6 +342,9 @@
   <string name="placeholder_system_version">系统版本</string>
   <string name="placeholder_timezone">时区</string>
   <string name="placeholder_user">用户</string>
+  <string name="placeholder_step_count">今日步数</string>
+  <string name="placeholder_screen_time">今日屏幕时长</string>
+  <string name="placeholder_battery_status">电池详细信息</string>
   <string name="reasoning_auto">自动</string>
   <string name="reasoning_auto_desc">让模型自动决定推理级别。</string>
   <string name="reasoning_custom">自定义推理预算</string>
