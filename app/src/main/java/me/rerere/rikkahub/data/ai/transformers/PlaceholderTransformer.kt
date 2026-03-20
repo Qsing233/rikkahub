@@ -3,6 +3,10 @@ package me.rerere.rikkahub.data.ai.transformers
 import android.content.Context
 import android.os.BatteryManager
 import android.os.Build
+import android.hardware.Sensor
+import android.hardware.SensorManager
+import android.app.usage.UsageStatsManager
+import android.app.usage.UsageEvents
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
@@ -111,6 +115,18 @@ object DefaultPlaceholderProvider : PlaceholderProvider {
         placeholder("user", { Text(stringResource(R.string.placeholder_user)) }) {
             it.settingsStore.settingsFlow.value.displaySetting.userNickname.ifBlank { "user" }
         }
+
+       placeholder("step_count", { Text(stringResource(R.string.placeholder_step_count)) }) {
+            it.context.getStepCount()
+        }
+
+        placeholder("screen_time", { Text(stringResource(R.string.placeholder_screen_time)) }) {
+            it.context.getScreenTime()
+        }
+
+        placeholder("battery_status", { Text(stringResource(R.string.placeholder_battery_status)) }) {
+            it.context.getBatteryStatus()
+        }
     }
 
     private fun Temporal.toDateString() = DateTimeFormatter
@@ -180,3 +196,54 @@ object PlaceholderTransformer : InputMessageTransformer, KoinComponent {
         return result
     }
 }
+
+    private fun Context.getStepCount(): String {
+        val sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        val stepSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
+        return if (stepSensor != null) {
+            "当前设备支持计步，需在系统设置开启运动健身权限后获取实时数据"
+        } else {
+            "当前设备不支持计步传感器"
+        }
+    }
+
+    private fun Context.getScreenTime(): String {
+        val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
+        if (usageStatsManager == null) {
+            return "无法获取屏幕时长（设备不支持）"
+        }
+        val currentTime = System.currentTimeMillis()
+        val startOfDay = getStartOfDayMillis()
+        val hasPermission = usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startOfDay, currentTime).isNotEmpty()
+        if (!hasPermission) {
+            return "请在设置中开启「使用情况访问权限」"
+        }
+        val stats = usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startOfDay, currentTime)
+        val totalTime = stats?.sumOf { it.totalTimeInForeground } ?: 0
+        val hours = totalTime / 1000 / 3600
+        val minutes = (totalTime / 1000 / 60) % 60
+        return "今日屏幕时长: ${hours}小时${minutes}分钟"
+    }
+
+    private fun Context.getBatteryStatus(): String {
+        val batteryManager = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+        val level = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+        val status = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_STATUS)
+        val statusText = when (status) {
+            BatteryManager.BATTERY_STATUS_CHARGING -> "充电中"
+            BatteryManager.BATTERY_STATUS_DISCHARGING -> "放电中"
+            BatteryManager.BATTERY_STATUS_FULL -> "已充满"
+            BatteryManager.BATTERY_STATUS_NOT_CHARGING -> "未充电"
+            else -> "未知"
+        }
+        return "电量: ${level}% | 状态: ${statusText}"
+    }
+
+    private fun getStartOfDayMillis(): Long {
+        val calendar = java.util.Calendar.getInstance()
+        calendar.set(java.util.Calendar.HOUR_OF_DAY, 0)
+        calendar.set(java.util.Calendar.MINUTE, 0)
+        calendar.set(java.util.Calendar.SECOND, 0)
+        calendar.set(java.util.Calendar.MILLISECOND, 0)
+        return calendar.timeInMillis
+    }
