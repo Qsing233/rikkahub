@@ -208,22 +208,60 @@ object PlaceholderTransformer : InputMessageTransformer, KoinComponent {
     }
 
     private fun Context.getScreenTime(): String {
-        val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
-        if (usageStatsManager == null) {
-            return "无法获取屏幕时长（设备不支持）"
-        }
-        val currentTime = System.currentTimeMillis()
-        val startOfDay = getStartOfDayMillis()
-        val hasPermission = usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startOfDay, currentTime).isNotEmpty()
-        if (!hasPermission) {
-            return "请在设置中开启「使用情况访问权限」"
-        }
-        val stats = usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startOfDay, currentTime)
-        val totalTime = stats?.sumOf { it.totalTimeInForeground } ?: 0
-        val hours = totalTime / 1000 / 3600
-        val minutes = (totalTime / 1000 / 60) % 60
-        return "今日屏幕时长: ${hours}小时${minutes}分钟"
+    val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
+        ?: return "❌ 无法获取屏幕时长（设备不支持 UsageStats）"
+    
+    val currentTime = System.currentTimeMillis()
+    val startOfDay = getStartOfDayMillis()
+    
+    // 检查权限
+    val hasPermission = usageStatsManager.queryUsageStats(
+        UsageStatsManager.INTERVAL_DAILY, startOfDay, currentTime
+    ).isNotEmpty()
+    
+    if (!hasPermission) {
+        return "⚠️ 请开启权限：设置 → 应用 → 特殊权限 → 使用情况访问权限 → RikkaHub"
     }
+    
+    // 获取今日总时长
+    val stats = usageStatsManager.queryUsageStats(
+        UsageStatsManager.INTERVAL_DAILY, startOfDay, currentTime
+    ) ?: return "❌ 获取使用数据失败"
+    
+    val totalTime = stats.sumOf { it.totalTimeInForeground }
+    val hours = totalTime / 1000 / 3600
+    val minutes = (totalTime / 1000 / 60) % 60
+    
+    // 获取Top 5应用（带真实应用名）
+    val packageManager = packageManager
+    val topApps = stats
+        .filter { it.totalTimeInForeground > 60_000 } // 过滤小于1分钟的应用
+        .sortedByDescending { it.totalTimeInForeground }
+        .take(5)
+        .map { stat ->
+            // ✅ 用 PackageManager 获取真实应用名（带异常保护）
+            val appName = try {
+                packageManager.getApplicationLabel(
+                    packageManager.getApplicationInfo(stat.packageName, 0)
+                ).toString()
+            } catch (e: Exception) {
+                stat.packageName.substringAfterLast(".") // 降级方案
+            }
+            val appMin = stat.totalTimeInForeground / 1000 / 60
+            "📱 ${appName}: ${appMin}分钟"
+        }
+    
+    return buildString {
+        appendLine("📱 今日屏幕时长: ${hours}小时${minutes}分钟")
+        appendLine("📊 Top 应用使用情况：")
+        if (topApps.isNotEmpty()) {
+            append(topApps.joinToString("\n"))
+        } else {
+            append("  无详细数据（使用时长均<1分钟）")
+        }
+    }
+}
+
 
     private fun Context.getBatteryStatus(): String {
         val batteryManager = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
