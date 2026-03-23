@@ -207,52 +207,55 @@ object PlaceholderTransformer : InputMessageTransformer, KoinComponent {
         }
     }
 
-    private fun Context.getScreenTime(): String {
+   private fun Context.getScreenTime(): String {
     val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
         ?: return "❌ 无法获取屏幕时长（设备不支持 UsageStats）"
-
     val currentTime = System.currentTimeMillis()
     val startOfDay = getStartOfDayMillis()
-
     val hasPermission = usageStatsManager.queryUsageStats(
         UsageStatsManager.INTERVAL_DAILY, startOfDay, currentTime
     ).isNotEmpty()
-
     if (!hasPermission) {
         return "⚠️ 请开启权限：设置 → 应用 → 特殊权限 → 使用情况访问权限 → RikkaHub"
     }
-
     val events = usageStatsManager.queryEvents(startOfDay, currentTime)
     val event = UsageEvents.Event()
-    val lastResumeTime = mutableMapOf<String, Long>()
+    val activeCount = mutableMapOf<String, Int>()
+    val foregroundStart = mutableMapOf<String, Long>()
     val appForegroundTime = mutableMapOf<String, Long>()
-
     while (events.hasNextEvent()) {
         events.getNextEvent(event)
+        val pkg = event.packageName
         when (event.eventType) {
             UsageEvents.Event.ACTIVITY_RESUMED -> {
-                lastResumeTime[event.packageName] = event.timeStamp
+                val count = activeCount.getOrDefault(pkg, 0)
+                if (count == 0) {
+                    foregroundStart[pkg] = event.timeStamp
+                }
+                activeCount[pkg] = count + 1
             }
             UsageEvents.Event.ACTIVITY_PAUSED -> {
-                val resumeTime = lastResumeTime.remove(event.packageName)
-                if (resumeTime != null) {
-                    val duration = event.timeStamp - resumeTime
-                    appForegroundTime[event.packageName] =
-                        (appForegroundTime[event.packageName] ?: 0L) + duration
+                val count = activeCount.getOrDefault(pkg, 0)
+                if (count <= 1) {
+                    activeCount[pkg] = 0
+                    val start = foregroundStart.remove(pkg)
+                    if (start != null) {
+                        appForegroundTime[pkg] =
+                            (appForegroundTime[pkg] ?: 0L) + (event.timeStamp - start)
+                    }
+                } else {
+                    activeCount[pkg] = count - 1
                 }
             }
         }
     }
-
-    for ((pkg, resumeTime) in lastResumeTime) {
-        val duration = currentTime - resumeTime
-        appForegroundTime[pkg] = (appForegroundTime[pkg] ?: 0L) + duration
+    for ((pkg, start) in foregroundStart) {
+        appForegroundTime[pkg] =
+            (appForegroundTime[pkg] ?: 0L) + (currentTime - start)
     }
-
     val totalTime = appForegroundTime.values.sum()
     val hours = totalTime / 1000 / 3600
     val minutes = (totalTime / 1000 / 60) % 60
-
     val topApps = appForegroundTime.entries
         .filter { it.value > 60_000 }
         .sortedByDescending { it.value }
@@ -268,7 +271,6 @@ object PlaceholderTransformer : InputMessageTransformer, KoinComponent {
             val appMin = time / 1000 / 60
             "📱 $appName: ${appMin}分钟"
         }
-
     return buildString {
         appendLine("📱 今日屏幕时长: ${hours}小时${minutes}分钟")
         appendLine("📊 Top 应用使用情况：")
